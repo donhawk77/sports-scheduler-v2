@@ -1,0 +1,111 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Helper Functions ---
+
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if user matches the document ID
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Get user data
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Check specific roles
+    function hasRole(role) {
+      return isAuthenticated() && getUserData().role == role;
+    }
+
+    function isAdmin() {
+      return hasRole('admin') || 
+             request.auth.token.email in [
+               'don.hawk77@gmail.com', 
+               'dhawk@valkyrieprosperity.com', 
+               'admin@sportsscheduler.com', 
+               'agent@valkyrie.com'
+             ];
+    }
+
+    function isVenue() {
+      return hasRole('venue');
+    }
+
+    function isCoach() {
+      return hasRole('coach');
+    }
+
+    // --- Collection Rules ---
+
+    // Users Collection
+    // Users Collection
+    // Anyone authenticated can read basic profile info (needed for displaying coach/venue/attendee details)
+    // Only owner or admin can write
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update, delete: if isOwner(userId) || isAdmin();
+    }
+
+    // Events Collection
+    // Public read (for Explore view)
+    // Only Venues/Coaches/Admins can write
+    match /events/{eventId} {
+      allow read: if true;
+      allow create: if isVenue() || isCoach() || isAdmin();
+      allow update, delete: if (resource.data.organizerId == request.auth.uid) || isAdmin();
+    }
+
+    // Bookings Collection
+    // Users can read/write their own bookings
+    // Organizers (Venue/Coach) can read bookings for their events
+    match /bookings/{bookingId} {
+      // Allow read if you are the booker OR the organizer of the event
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || 
+        resource.data.organizerId == request.auth.uid || 
+        isAdmin()
+      );
+      
+      // Allow create if you are the one booking
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      
+      // Allow update if:
+      // 1. You are the booker and ONLY cancelling
+      // 2. You are the organizer (management)
+      // 3. You are an Admin
+      allow update: if isAuthenticated() && (
+        (isOwner(resource.data.userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) && request.resource.data.status == 'cancelled') ||
+        resource.data.organizerId == request.auth.uid || 
+        isAdmin()
+      );
+    }
+    
+    // Gigs Collection (Marketplace)
+    // Read: Authenticated users
+    // Write: Coaches/Venues/Admins
+    match /gigs/{gigId} {
+        allow read: if isAuthenticated();
+        allow create: if isCoach() || isVenue() || isAdmin();
+        allow update, delete: if (resource.data.posterId == request.auth.uid) || isAdmin();
+    }
+
+    // Venues Collection
+    match /venues/{venueId} {
+      allow read: if true; 
+      allow create: if isVenue() || isAdmin();
+      allow update, delete: if (resource.data.ownerId == request.auth.uid) || isAdmin();
+    }
+    
+    // Messages/Chats (If implemented)
+    // ...
+  }
+}
