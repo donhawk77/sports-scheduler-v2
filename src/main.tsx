@@ -6,6 +6,19 @@ import './lib/firebase' // Initialize Firebase
 import App from './App.tsx'
 import { ToastProvider } from './context/ToastContext.tsx'
 import { AuthProvider } from './context/AuthContext.tsx'
+import * as Sentry from "@sentry/react";
+
+Sentry.init({
+  dsn: "https://94026ec9927690885662f23b931e384e@o4510920907358208.ingest.us.sentry.io/4510920909783040",
+  sendDefaultPii: true,
+  integrations: [
+    Sentry.browserTracingIntegration(),
+    Sentry.replayIntegration(),
+  ],
+  tracesSampleRate: 1.0,
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1.0,
+});
 
 console.log('Main.tsx: Starting execution');
 try {

@@ -43,6 +43,34 @@ service cloud.firestore {
       return hasRole('coach');
     }
 
+    // --- Schema Validation Helpers ---
+    
+    function isValidString(text, minLen, maxLen) {
+      return text is string && text.size() >= minLen && text.size() <= maxLen;
+    }
+
+    function isValidUser(data) {
+      return (!('displayName' in data) || isValidString(data.displayName, 1, 100)) &&
+             (!('email' in data) || isValidString(data.email, 5, 100)) &&
+             (!('bio' in data) || isValidString(data.bio, 0, 1000));
+    }
+
+    function isValidBooking(data) {
+      return (!('price_cents' in data) || (data.price_cents is number && data.price_cents >= 0)) &&
+             (!('status' in data) || data.status in ['pending_payment', 'confirmed', 'cancelled', 'attended', 'no_show', 'failed_payment', 'failed_overbooked']) &&
+             (!('paymentStatus' in data) || data.paymentStatus in ['unpaid', 'paid', 'refunded', 'paid_pending_refund']);
+    }
+
+    function isValidEvent(data) {
+      return (!('title' in data) || isValidString(data.title, 1, 150)) &&
+             (!('description' in data) || isValidString(data.description, 0, 5000)) &&
+             (!('capacity' in data) || (
+                data.capacity.max_attendees is number && 
+                data.capacity.max_attendees > 0 && 
+                data.capacity.max_attendees <= 1000
+             ));
+    }
+
     // --- Collection Rules ---
 
     // Users Collection
@@ -51,8 +79,9 @@ service cloud.firestore {
     // Only owner or admin can write
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update, delete: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && request.auth.uid == userId && isValidUser(request.resource.data);
+      allow update: if (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data);
+      allow delete: if isOwner(userId) || isAdmin();
     }
 
     // Events Collection
@@ -60,8 +89,9 @@ service cloud.firestore {
     // Only Venues/Coaches/Admins can write
     match /events/{eventId} {
       allow read: if true;
-      allow create: if isVenue() || isCoach() || isAdmin();
-      allow update, delete: if (resource.data.organizerId == request.auth.uid) || isAdmin();
+      allow create: if (isVenue() || isCoach() || isAdmin()) && isValidEvent(request.resource.data);
+      allow update: if ((resource.data.organizerId == request.auth.uid) || isAdmin()) && isValidEvent(request.resource.data);
+      allow delete: if (resource.data.organizerId == request.auth.uid) || isAdmin();
     }
 
     // Bookings Collection
@@ -75,14 +105,17 @@ service cloud.firestore {
         isAdmin()
       );
       
-      // Allow create if you are the one booking
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      // Allow create if you are the one booking AND data is valid
+      allow create: if isAuthenticated() && 
+                    request.resource.data.userId == request.auth.uid &&
+                    isValidBooking(request.resource.data);
       
-      // Allow update if:
+      // Allow update if data is valid AND:
       // 1. You are the booker and ONLY cancelling
       // 2. You are the organizer (management)
       // 3. You are an Admin
-      allow update: if isAuthenticated() && (
+      allow update: if isAuthenticated() && 
+                    isValidBooking(request.resource.data) && (
         (isOwner(resource.data.userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) && request.resource.data.status == 'cancelled') ||
         resource.data.organizerId == request.auth.uid || 
         isAdmin()

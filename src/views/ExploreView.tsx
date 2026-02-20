@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Share2, Heart, Loader2, Calendar, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, getDocs, orderBy, limit, startAfter, QueryDocumentSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -27,16 +27,17 @@ export const ExploreView: React.FC = () => {
     const [userCoords, setUserCoords] = useState<[number, number] | null>(null);
     const [availableCities, setAvailableCities] = useState<string[]>([]);
 
+    // Pagination State
+    const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot | null>(null);
+    const [hasMore, setHasMore] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
+
     useEffect(() => {
         const fetchEvents = async () => {
             try {
                 setLoading(true);
                 const eventsRef = collection(db, 'events');
-                const q = query(eventsRef, orderBy('startTime', 'asc'));
-
-                // Firestore doesn't support radius search + other filters easily
-                // So we'll fetch all and filter client-side for now, OR do geohash range
-                // For this demo, we'll fetch all upcoming and sort/filter
+                const q = query(eventsRef, orderBy('startTime', 'asc'), limit(15));
                 const querySnapshot = await getDocs(q);
 
                 const fetchedEvents = querySnapshot.docs.map(doc => ({
@@ -51,6 +52,8 @@ export const ExploreView: React.FC = () => {
                 setAvailableCities(cities.sort());
 
                 setEvents(fetchedEvents);
+                setLastVisible(querySnapshot.docs[querySnapshot.docs.length - 1] || null);
+                setHasMore(querySnapshot.docs.length === 15);
             } catch (error) {
                 console.error('Error fetching events:', error);
                 showToast('Failed to load sessions', 'error');
@@ -61,6 +64,33 @@ export const ExploreView: React.FC = () => {
 
         fetchEvents();
     }, [showToast]);
+
+    const loadMoreEvents = async () => {
+        if (!lastVisible || loadingMore) return;
+        setLoadingMore(true);
+        try {
+            const eventsRef = collection(db, 'events');
+            const q = query(eventsRef, orderBy('startTime', 'asc'), startAfter(lastVisible), limit(15));
+            const querySnapshot = await getDocs(q);
+
+            const fetchedEvents = querySnapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            })) as Event[];
+
+            const newCities = Array.from(new Set(fetchedEvents.map(e => e.city).filter(Boolean))) as string[];
+            setAvailableCities(prev => Array.from(new Set([...prev, ...newCities])).sort());
+
+            setEvents(prev => [...prev, ...fetchedEvents]);
+            setLastVisible(querySnapshot.docs[querySnapshot.docs.length - 1] || null);
+            setHasMore(querySnapshot.docs.length === 15);
+        } catch (error) {
+            console.error('Error loading more events:', error);
+            showToast('Failed to load more sessions', 'error');
+        } finally {
+            setLoadingMore(false);
+        }
+    };
 
     const requestLocation = () => {
         if (!navigator.geolocation) {
@@ -282,9 +312,22 @@ export const ExploreView: React.FC = () => {
 
                     {filteredEvents.length === 0 && (
                         <div className="text-center py-12 text-text-muted">
-                            <p>No sessions found matching "{searchTerm}".</p>
+                            <p>No sessions found matching your criteria.</p>
                         </div>
                     )}
+                </div>
+            )}
+
+            {hasMore && !loading && (
+                <div className="flex justify-center mt-8 pb-8 animate-fade-in-up">
+                    <button
+                        onClick={loadMoreEvents}
+                        disabled={loadingMore}
+                        className="px-6 py-3 bg-white/5 hover:bg-white/10 text-white font-bold rounded-xl transition-colors border border-white/10 flex items-center gap-2"
+                    >
+                        {loadingMore && <Loader2 className="w-5 h-5 animate-spin" />}
+                        {loadingMore ? 'Loading...' : 'Load More Sessions'}
+                    </button>
                 </div>
             )}
 
