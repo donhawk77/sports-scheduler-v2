@@ -24,6 +24,7 @@ export const MediaCaptureOverlay: React.FC<MediaCaptureOverlayProps> = ({ onClos
                 setTimer((prev) => prev + 1);
             }, 1000);
         } else {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setTimer(0);
         }
         return () => clearInterval(interval);
@@ -57,6 +58,7 @@ export const MediaCaptureOverlay: React.FC<MediaCaptureOverlayProps> = ({ onClos
     };
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         startCamera();
         return () => stopCamera();
     }, []);

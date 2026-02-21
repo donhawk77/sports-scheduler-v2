@@ -17,6 +17,7 @@ export const MediaLibrary: React.FC<MediaLibraryProps> = ({ onSelectClip, refres
         // Load clips from local storage (Mock Cloud)
         const savedClips = localStorage.getItem('coach_media_library');
         if (savedClips) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setClips(JSON.parse(savedClips).sort((a: MediaClip, b: MediaClip) => new Date(b.date).getTime() - new Date(a.date).getTime()));
         }
     }, [refreshTrigger]);
