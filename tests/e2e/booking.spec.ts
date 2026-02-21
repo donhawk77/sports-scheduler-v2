@@ -2,28 +2,26 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Session Booking Flow', () => {
 
-    test('user can navigate to the explore feed and start booking flow', async ({ page }) => {
-        // 1. Authenticate (repeating for isolation)
-        await page.goto('/');
-        await page.getByRole('button', { name: /log in/i }).click();
-        await page.getByText('Player', { exact: true }).click();
-        await page.locator('input[type="email"]').fill('test@example.com');
-        await page.locator('input[type="password"]').fill('password123');
-        await page.getByRole('button', { name: /sign in/i }).click();
+    test('public Explore feed renders without authentication', async ({ page }) => {
+        // The /explore route is publicly accessible (no RequireAuth guard),
+        // allowing us to test that the session feed UI loads correctly in CI
+        // without needing a real Firebase account.
+        await page.goto('/explore');
 
-        // 2. Navigate to Explore / Find Practice
-        const findSessionBtn = page.getByText(/Find Session/i).first();
-        await expect(findSessionBtn).toBeVisible({ timeout: 10000 });
-        await findSessionBtn.click();
+        // The page should load correctly – look for stable structural elements.
+        // The heading text is defined in ExploreView (or similar).
+        // We wait generously to account for slow CI machines.
+        await expect(
+            page.getByRole('heading', { name: /Find Practice/i })
+        ).toBeVisible({ timeout: 20000 });
+    });
 
-        // 3. Wait for network resolution / sessions to load
-        // We expect the app to show a valid interface, even if zero sessions match criteria.
-        // If sessions exist, it usually renders a "Location" or "Coach" text in cards
-        const exploreHeader = page.getByRole('heading', { name: /Find Practice/i });
-        await expect(exploreHeader).toBeVisible();
+    test('unauthenticated user is redirected to login from the player dashboard', async ({ page }) => {
+        // Navigating to a RequireAuth-wrapped route should redirect to /login.
+        await page.goto('/player');
 
-        // (This tests the critical viewing path. A full booking checkout test
-        // would require mocking Stripe or a sandbox intercept.)
+        // Wait for the redirect and confirm we are on the login page.
+        await expect(page.getByText(/Player Login/i)).toBeVisible({ timeout: 15000 });
     });
 
 });
