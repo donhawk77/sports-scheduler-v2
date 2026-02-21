@@ -5,9 +5,14 @@ service cloud.firestore {
 
     // --- Helper Functions ---
 
+    // Check if request is coming from a verified app (App Check)
+    function isAppChecked() {
+      return request.appToken != null;
+    }
+
     // Check if user is authenticated
     function isAuthenticated() {
-      return request.auth != null;
+      return isAppChecked() && request.auth != null;
     }
 
     // Check if user matches the document ID
@@ -85,10 +90,10 @@ service cloud.firestore {
     }
 
     // Events Collection
-    // Public read (for Explore view)
+    // Public read (for Explore view, but requires App Check)
     // Only Venues/Coaches/Admins can write
     match /events/{eventId} {
-      allow read: if true;
+      allow read: if isAppChecked();
       allow create: if (isVenue() || isCoach() || isAdmin()) && isValidEvent(request.resource.data);
       allow update: if ((resource.data.organizerId == request.auth.uid) || isAdmin()) && isValidEvent(request.resource.data);
       allow delete: if (resource.data.organizerId == request.auth.uid) || isAdmin();
@@ -133,7 +138,7 @@ service cloud.firestore {
 
     // Venues Collection
     match /venues/{venueId} {
-      allow read: if true; 
+      allow read: if isAppChecked(); 
       allow create: if isVenue() || isAdmin();
       allow update, delete: if (resource.data.ownerId == request.auth.uid) || isAdmin();
     }

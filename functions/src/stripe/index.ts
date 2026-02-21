@@ -1,12 +1,20 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import Stripe from "stripe";
+import { defineSecret } from "firebase-functions/params";
 
-// Initialize Stripe with Secret Key (from Firebase Config)
-// To set: firebase functions:config:set stripe.secret="sk_test_..."
-const stripe = new Stripe(functions.config().stripe?.secret || "sk_test_placeholder", {
-    apiVersion: "2023-10-16",
-});
+// Define strict secrets using Google Cloud Secret Manager via Firebase Params
+// These will be requested during a fresh deployment
+const stripeSecret = defineSecret("STRIPE_SECRET_KEY");
+const stripeWebhookSecret = defineSecret("STRIPE_WEBHOOK_SECRET");
+
+// Initialize Stripe lazily inside the function execution context
+// to ensure the secret has been loaded from the manager.
+const getStripe = () => {
+    return new Stripe(stripeSecret.value(), {
+        apiVersion: "2023-10-16",
+    });
+};
 
 const db = admin.firestore();
 
@@ -18,7 +26,7 @@ interface CreateConnectAccountData {
  * Creates a Stripe Connect Account for a user (Coach or Venue)
  * and returns an Account Link for onboarding.
  */
-export const createConnectAccount = functions.https.onCall(async (data: CreateConnectAccountData, context: functions.https.CallableContext) => {
+export const createConnectAccount = functions.runWith({ secrets: [stripeSecret] }).https.onCall(async (data: CreateConnectAccountData, context: functions.https.CallableContext) => {
     // 1. Authenticate User
     if (!context.auth) {
         throw new functions.https.HttpsError(
@@ -40,8 +48,9 @@ export const createConnectAccount = functions.https.onCall(async (data: CreateCo
 
     try {
         // 2. Create Stripe Account if not exists
+        const stripeClient = getStripe();
         if (!stripeAccountId) {
-            const account = await stripe.accounts.create({
+            const account = await stripeClient.accounts.create({
                 type: "standard",
                 email: context.auth.token.email,
                 business_type: "individual", // Can be updated during onboarding
@@ -56,7 +65,7 @@ export const createConnectAccount = functions.https.onCall(async (data: CreateCo
         }
 
         // 3. Create Account Link (Onboarding URL)
-        const accountLink = await stripe.accountLinks.create({
+        const accountLink = await stripeClient.accountLinks.create({
             account: stripeAccountId,
             refresh_url: data.redirectUrl || "https://sportsscheduler.firebaseapp.com/venue",
             return_url: data.redirectUrl || "https://sportsscheduler.firebaseapp.com/venue",
@@ -83,7 +92,7 @@ interface CreatePaymentIntentData {
  * Creates a PaymentIntent for a split payment (Marketplace)
  * Splits funds between Platform (App) and Destination (Coach/Venue).
  */
-export const createPaymentIntent = functions.https.onCall(async (data: CreatePaymentIntentData, context: functions.https.CallableContext) => {
+export const createPaymentIntent = functions.runWith({ secrets: [stripeSecret] }).https.onCall(async (data: CreatePaymentIntentData, context: functions.https.CallableContext) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
     }
@@ -98,7 +107,8 @@ export const createPaymentIntent = functions.https.onCall(async (data: CreatePay
         // Create PaymentIntent with Destination Charge
         // The funds go to the Platform first, then transfer to the Destination less the fee.
 
-        const paymentIntent = await stripe.paymentIntents.create({
+        const stripeClient = getStripe();
+        const paymentIntent = await stripeClient.paymentIntents.create({
             amount: amount,
             currency: currency,
             automatic_payment_methods: { enabled: true },
@@ -127,15 +137,16 @@ export const createPaymentIntent = functions.https.onCall(async (data: CreatePay
  * Stripe Webhook Handler
  * Listens for payment_intent.succeeded to update booking status.
  */
-export const handleStripeWebhook = functions.https.onRequest(async (request, response) => {
+export const handleStripeWebhook = functions.runWith({ secrets: [stripeSecret, stripeWebhookSecret] }).https.onRequest(async (request, response) => {
     const sig = request.headers['stripe-signature'];
-    const endpointSecret = functions.config().stripe?.webhook_secret;
+    const endpointSecret = stripeWebhookSecret.value();
+    const stripeClient = getStripe();
 
     let event;
 
     try {
         // request.rawBody is available in Firebase Functions
-        event = stripe.webhooks.constructEvent(request.rawBody, sig as string, endpointSecret);
+        event = stripeClient.webhooks.constructEvent(request.rawBody, sig as string, endpointSecret);
     } catch (err) {
         const error = err as Error;
         console.error(`Webhook Error: ${error.message}`);
