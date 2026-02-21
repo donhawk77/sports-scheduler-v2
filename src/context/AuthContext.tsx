@@ -8,6 +8,7 @@ import {
 import type { User } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
+import posthog from 'posthog-js';
 
 interface UserData {
     uid: string;
@@ -46,7 +47,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const userRef = doc(db, 'users', firebaseUser.uid);
                 unsubscribeDoc = onSnapshot(userRef, (userSnap) => {
                     if (userSnap.exists()) {
-                        setUserData(userSnap.data() as UserData);
+                        const data = userSnap.data() as UserData;
+                        setUserData(data);
+                        posthog.identify(firebaseUser.uid, {
+                            email: firebaseUser.email,
+                            role: data.role,
+                            displayName: data.displayName
+                        });
                     } else {
                         console.warn('User document not found for:', firebaseUser.uid);
                         setUserData(null);
@@ -56,6 +63,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 });
             } else {
                 setUserData(null);
+                posthog.reset();
                 if (unsubscribeDoc) {
                     unsubscribeDoc();
                     unsubscribeDoc = undefined;

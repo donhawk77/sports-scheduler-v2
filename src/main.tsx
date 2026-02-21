@@ -9,6 +9,8 @@ import { AuthProvider } from './context/AuthContext.tsx'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import * as Sentry from "@sentry/react";
+import posthog from 'posthog-js';
+import { PostHogProvider } from 'posthog-js/react';
 
 Sentry.init({
   dsn: "https://94026ec9927690885662f23b931e384e@o4510920907358208.ingest.us.sentry.io/4510920909783040",
@@ -21,6 +23,18 @@ Sentry.init({
   replaysSessionSampleRate: 0.1,
   replaysOnErrorSampleRate: 1.0,
 });
+
+if (import.meta.env.VITE_POSTHOG_KEY) {
+  posthog.init(import.meta.env.VITE_POSTHOG_KEY, {
+    api_host: import.meta.env.VITE_POSTHOG_HOST || 'https://us.i.posthog.com',
+    person_profiles: 'identified_only',
+    loaded: (posthog) => {
+      if (import.meta.env.DEV) {
+        posthog.debug();
+      }
+    }
+  });
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -46,13 +60,15 @@ try {
   root.render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <AuthProvider>
-            <ToastProvider>
-              <App />
-            </ToastProvider>
-          </AuthProvider>
-        </BrowserRouter>
+        <PostHogProvider client={posthog}>
+          <BrowserRouter>
+            <AuthProvider>
+              <ToastProvider>
+                <App />
+              </ToastProvider>
+            </AuthProvider>
+          </BrowserRouter>
+        </PostHogProvider>
         <ReactQueryDevtools initialIsOpen={false} />
       </QueryClientProvider>
     </StrictMode>,

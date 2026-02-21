@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { CheckoutModal } from '../components/payments/CheckoutModal';
 import type { Event } from '../types/schema';
+import posthog from 'posthog-js';
 
 export const SessionDetailView: React.FC = () => {
     const { id } = useParams();
@@ -32,6 +33,11 @@ export const SessionDetailView: React.FC = () => {
 
                 if (eventSnap.exists()) {
                     setEvent({ id: eventSnap.id, ...eventSnap.data() } as Event);
+
+                    posthog.capture('viewed_session_detail', {
+                        eventId: id,
+                        eventName: eventSnap.data().title
+                    });
 
                     // Check if current user is already booked
                     if (user) {
@@ -89,6 +95,13 @@ export const SessionDetailView: React.FC = () => {
                 price_cents: event?.price_cents || 0,
                 venueId: event?.organizerId, // Assuming organizer is the venue
                 organizerId: event?.organizerId
+            });
+
+            posthog.capture('clicked_book_session', {
+                eventId: id,
+                eventName: event?.title,
+                bookingId: bookingRef.id,
+                price_cents: event?.price_cents
             });
 
             setCurrentBookingId(bookingRef.id);

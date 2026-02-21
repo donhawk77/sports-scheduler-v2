@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useToast } from '../../context/ToastContext';
+import posthog from 'posthog-js';
 
 interface WaiverModalProps {
     isOpen: boolean;
@@ -35,6 +36,10 @@ export const WaiverModal: React.FC<WaiverModalProps> = ({ isOpen, onClose, onSuc
             });
 
             // Optimistic update handled by context usually, but we can just callback
+            posthog.capture('completed_waiver_signature', {
+                userId: user.uid,
+                email: user.email
+            });
             showToast("Waiver acknowledged", "success");
             onSuccess();
             onClose();
