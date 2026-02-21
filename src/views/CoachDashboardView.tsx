@@ -168,10 +168,10 @@ export const CoachDashboardView: React.FC = () => {
                                     <div className="mt-6 flex gap-2">
                                         <button
                                             disabled={!nextSession}
-                                            onClick={() => navigate(`/session/${nextSession?.id}`)}
+                                            onClick={() => navigate('/session/edit', { state: { session: nextSession } })}
                                             className="px-3 py-1.5 bg-primary disabled:opacity-50 text-black font-bold text-xs rounded hover:bg-primary/90 transition-colors uppercase tracking-wider"
                                         >
-                                            Details
+                                            Edit Session
                                         </button>
                                         <button
                                             onClick={() => setIsPostGigOpen(true)}
@@ -259,7 +259,7 @@ export const CoachDashboardView: React.FC = () => {
                             events.map((event) => (
                                 <div
                                     key={event.id}
-                                    onClick={() => navigate(`/session/${event.id}`)}
+                                    onClick={() => navigate('/session/edit', { state: { session: event } })}
                                     className="glass-panel p-4 rounded-xl flex items-center justify-between group hover:border-primary/50 transition-all cursor-pointer border border-white/5 hover:bg-white/5"
                                 >
                                     <div className="flex items-center gap-4">
@@ -295,7 +295,7 @@ export const CoachDashboardView: React.FC = () => {
                                     </div>
                                     <div className="hidden md:block">
                                         <span className="px-3 py-1 rounded-full bg-white/5 text-white/40 text-[10px] font-bold uppercase tracking-widest border border-white/10 group-hover:border-primary/30 group-hover:text-primary transition-colors">
-                                            Manage
+                                            Edit
                                         </span>
                                     </div>
                                 </div>

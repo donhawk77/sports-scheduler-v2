@@ -1,30 +1,61 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Plus, Trash2, Clock, MapPin, Activity } from 'lucide-react';
-import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, Timestamp, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { LocationSelectorModal } from '../components/session/LocationSelectorModal';
 import { getGeohash } from '../lib/location';
 
+import { useLocation } from 'react-router-dom';
+
 export const SessionEditorView: React.FC = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { user } = useAuth();
     const { showToast } = useToast();
 
-    // Mock State for the session being edited
-    const [sessionDetails, setSessionDetails] = useState({
-        title: "The Lab",
-        date: new Date().toISOString().split('T')[0],
-        timeStart: "18:00",
-        timeEnd: "20:00",
-        venue: "Downtown Rec Center",
-        court: "Court 2",
-        city: "San Antonio",
-        lat: 29.4241,
-        lng: -98.4936,
-        intensity: "SWEAT" // Chill, Sweat, Burn
+    const existingSession = location.state?.session as any;
+
+    // State for the session being edited
+    const [sessionDetails, setSessionDetails] = useState(() => {
+        if (existingSession) {
+            const start = existingSession.startTime?.seconds ? new Date(existingSession.startTime.seconds * 1000) : new Date();
+            const end = existingSession.endTime?.seconds ? new Date(existingSession.endTime.seconds * 1000) : new Date();
+
+            // Fix timezone formatting properly
+            const startHH = String(start.getHours()).padStart(2, '0');
+            const startMM = String(start.getMinutes()).padStart(2, '0');
+            const endHH = String(end.getHours()).padStart(2, '0');
+            const endMM = String(end.getMinutes()).padStart(2, '0');
+
+            return {
+                id: existingSession.id,
+                title: existingSession.title || "The Lab",
+                date: start.getFullYear() + '-' + String(start.getMonth() + 1).padStart(2, '0') + '-' + String(start.getDate()).padStart(2, '0'),
+                timeStart: `${startHH}:${startMM}`,
+                timeEnd: `${endHH}:${endMM}`,
+                venue: existingSession.venueName || "Downtown Rec Center",
+                court: existingSession.location?.includes('-') ? existingSession.location.split(' - ')[1] : "Court 2",
+                city: existingSession.city || "San Antonio",
+                lat: existingSession.coordinates?.lat || 29.4241,
+                lng: existingSession.coordinates?.lng || -98.4936,
+                intensity: existingSession.type || "SWEAT"
+            };
+        }
+        return {
+            title: "The Lab",
+            date: new Date().toISOString().split('T')[0],
+            timeStart: "18:00",
+            timeEnd: "20:00",
+            venue: "Downtown Rec Center",
+            court: "Court 2",
+            city: "San Antonio",
+            lat: 29.4241,
+            lng: -98.4936,
+            intensity: "SWEAT"
+        };
     });
 
     interface Drill {
@@ -34,11 +65,16 @@ export const SessionEditorView: React.FC = () => {
         category: string;
     }
 
-    const [drills, setDrills] = useState([
-        { id: 1, name: "Dynamic Warmup", duration: 15, category: "Warmup" },
-        { id: 2, name: "Layup Lines", duration: 20, category: "Finishing" },
-        { id: 3, name: "3-Man Weave", duration: 25, category: "Transition" }
-    ]);
+    const [drills, setDrills] = useState<Drill[]>(() => {
+        if (existingSession?.drills && existingSession.drills.length > 0) {
+            return existingSession.drills;
+        }
+        return [
+            { id: 1, name: "Dynamic Warmup", duration: 15, category: "Warmup" },
+            { id: 2, name: "Layup Lines", duration: 20, category: "Finishing" },
+            { id: 3, name: "3-Man Weave", duration: 25, category: "Transition" }
+        ];
+    });
 
     const [isLibraryOpen, setIsLibraryOpen] = useState(false);
     const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
@@ -82,7 +118,7 @@ export const SessionEditorView: React.FC = () => {
             const end = new Date(`${sessionDetails.date}T${sessionDetails.timeEnd}`);
             const durationMinutes = Math.round((end.getTime() - start.getTime()) / (1000 * 60));
 
-            const eventData = {
+            const baseEventData = {
                 title: sessionDetails.title,
                 description: `Drills: ${drills.map(d => d.name).join(', ')}`,
                 drills: drills.map(d => ({
@@ -95,37 +131,47 @@ export const SessionEditorView: React.FC = () => {
                 endTime: Timestamp.fromDate(end),
                 location: `${sessionDetails.venue} - ${sessionDetails.court}`,
                 venueName: sessionDetails.venue,
-                organizerId: user.uid,
-                attendees: [],
                 type: sessionDetails.intensity,
                 durationMinutes,
-                capacity: {
-                    max_attendees: 15,
-                    current_attendees: 0,
-                    waitlist_enabled: true,
-                    waitlist_count: 0
-                },
-                policy: {
-                    cancellation_deadline_hours: 24,
-                    refund_percentage: 100,
-                    auto_promote_waitlist: true
-                },
-                financial: {
-                    price_cents: 2000, // Default $20
-                    venue_id: 'default_venue',
-                    coach_id: user.uid,
-                    venue_cut_percent: 20,
-                    coach_cut_percent: 80,
-                    payment_status: 'pending' as const
-                },
                 city: sessionDetails.city,
                 coordinates: { lat: sessionDetails.lat, lng: sessionDetails.lng },
                 geohash: getGeohash(sessionDetails.lat, sessionDetails.lng),
-                createdAt: serverTimestamp()
             };
 
-            await addDoc(collection(db, 'events'), eventData);
-            showToast("Session published successfully!", "success");
+            if ((sessionDetails as any).id) {
+                // Update existing
+                await updateDoc(doc(db, 'events', (sessionDetails as any).id), baseEventData);
+                showToast("Session updated successfully!", "success");
+            } else {
+                // Create new
+                const eventData = {
+                    ...baseEventData,
+                    organizerId: user.uid,
+                    attendees: [],
+                    capacity: {
+                        max_attendees: 15,
+                        current_attendees: 0,
+                        waitlist_enabled: true,
+                        waitlist_count: 0
+                    },
+                    policy: {
+                        cancellation_deadline_hours: 24,
+                        refund_percentage: 100,
+                        auto_promote_waitlist: true
+                    },
+                    financial: {
+                        price_cents: 2000, // Default $20
+                        venue_id: 'default_venue',
+                        coach_id: user.uid,
+                        venue_cut_percent: 20,
+                        coach_cut_percent: 80,
+                        payment_status: 'pending' as const
+                    },
+                    createdAt: serverTimestamp()
+                };
+                await addDoc(collection(db, 'events'), eventData);
+                showToast("Session published successfully!", "success");
+            }
             navigate('/coach');
         } catch (error) {
             console.error("Error saving session:", error);
