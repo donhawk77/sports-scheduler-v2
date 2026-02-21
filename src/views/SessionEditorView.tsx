@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Plus, Trash2, Clock, MapPin, Activity } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Trash2, Clock, MapPin, Activity, Play } from 'lucide-react';
 import { collection, addDoc, serverTimestamp, Timestamp, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
@@ -214,13 +214,24 @@ export const SessionEditorView: React.FC = () => {
                         <p className="text-text-muted text-sm tracking-widest uppercase">Session Builder</p>
                     </div>
                 </div>
-                <button
-                    onClick={handleSave}
-                    className="px-6 py-2 bg-primary text-black font-bold rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2 shadow-lg shadow-primary/20"
-                >
-                    <Save className="w-5 h-5" />
-                    <span>Save</span>
-                </button>
+                <div className="flex items-center gap-3">
+                    {(sessionDetails as any).id && (
+                        <button
+                            onClick={() => navigate('/session/active', { state: { session: existingSession, sessionId: (sessionDetails as any).id } })}
+                            className="px-6 py-2 bg-green-500 text-black font-bold rounded-lg hover:bg-green-400 transition-colors flex items-center gap-2 shadow-lg shadow-green-500/20"
+                        >
+                            <Play className="w-5 h-5" />
+                            <span className="hidden md:inline">Run Session</span>
+                        </button>
+                    )}
+                    <button
+                        onClick={handleSave}
+                        className="px-6 py-2 bg-primary text-black font-bold rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2 shadow-lg shadow-primary/20"
+                    >
+                        <Save className="w-5 h-5" />
+                        <span>Save</span>
+                    </button>
+                </div>
             </header>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
