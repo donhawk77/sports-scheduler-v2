@@ -6,13 +6,15 @@ service cloud.firestore {
     // --- Helper Functions ---
 
     // Check if request is coming from a verified app (App Check)
+    // NOTE: App Check is optional — only enforced on public reads to block bots.
+    // Do NOT require it for authenticated writes; App Check is currently disabled.
     function isAppChecked() {
       return request.appToken != null;
     }
 
-    // Check if user is authenticated
+    // Check if user is authenticated (Firebase Auth only — no App Check required)
     function isAuthenticated() {
-      return isAppChecked() && request.auth != null;
+      return request.auth != null;
     }
 
     // Check if user matches the document ID
@@ -90,13 +92,13 @@ service cloud.firestore {
     }
 
     // Events Collection
-    // Public read (for Explore view, but requires App Check)
-    // Only Venues/Coaches/Admins can write
+    // Public read: prefer App Check (bot protection), but fall back to any auth
+    // Only Venues/Coaches/Admins can create; organizer or admin can update/delete
     match /events/{eventId} {
-      allow read: if isAppChecked();
+      allow read: if isAppChecked() || isAuthenticated();
       allow create: if (isVenue() || isCoach() || isAdmin()) && isValidEvent(request.resource.data);
       allow update: if ((resource.data.organizerId == request.auth.uid) || isAdmin()) && isValidEvent(request.resource.data);
-      allow delete: if (resource.data.organizerId == request.auth.uid) || isAdmin();
+      allow delete: if (resource.data.organizerId == request.auth.uid || isAdmin());
     }
 
     // Bookings Collection
@@ -138,9 +140,9 @@ service cloud.firestore {
 
     // Venues Collection
     match /venues/{venueId} {
-      allow read: if isAppChecked(); 
+      allow read: if isAppChecked() || isAuthenticated();
       allow create: if isVenue() || isAdmin();
-      allow update, delete: if (resource.data.ownerId == request.auth.uid) || isAdmin();
+      allow update, delete: if (resource.data.ownerId == request.auth.uid || isAdmin());
     }
     
     // Messages/Chats (If implemented)
