@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Play, Pause, Square, CheckCircle, SkipForward, RotateCcw, ArrowRight, Video, Film, MessageCircle } from 'lucide-react';
 import { MediaCaptureOverlay } from '../components/media/MediaCaptureOverlay';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface DrillItem {
     id: string;
@@ -27,6 +29,8 @@ export const ActiveSessionView: React.FC = () => {
     const [isCaptureOpen, setIsCaptureOpen] = useState(false);
 
     const passedSession = location.state?.session as any;
+    const sessionId = location.state?.sessionId as string | undefined;
+    const hasStampedRef = useRef(false);
 
     // Initialize Drills from passed session or fallback to mock
     const [sessionDrills, setSessionDrills] = useState<Drill[]>(() => {
@@ -74,6 +78,17 @@ export const ActiveSessionView: React.FC = () => {
 
     const activeDrill = sessionDrills[activeDrillIndex] || sessionDrills[0];
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Stamp lastUsedAt in Firestore the first time the coach hits Play
+    const handlePlay = () => {
+        if (!isRunning && !hasStampedRef.current && sessionId) {
+            hasStampedRef.current = true;
+            updateDoc(doc(db, 'events', sessionId), {
+                lastUsedAt: serverTimestamp()
+            }).catch(err => console.warn('Could not stamp lastUsedAt:', err));
+        }
+        setIsRunning(!isRunning);
+    };
 
     // Timer Logic
     useEffect(() => {
@@ -223,7 +238,7 @@ export const ActiveSessionView: React.FC = () => {
                                 </button>
 
                                 <button
-                                    onClick={() => setIsRunning(!isRunning)}
+                                    onClick={handlePlay}
                                     className={`w-24 h-24 rounded-full flex items-center justify-center transition-all transform hover:scale-105 active:scale-95 ${isRunning
                                         ? 'bg-white/10 text-white border-2 border-white/10'
                                         : 'bg-primary text-black shadow-[0_0_40px_rgba(250,204,21,0.4)]'

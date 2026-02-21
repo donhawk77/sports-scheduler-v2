@@ -276,6 +276,21 @@ export const CoachDashboardView: React.FC = () => {
                                             <p className="text-sm text-text-muted flex items-center gap-2">
                                                 {event.venueName} • {new Date(event.startTime.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                             </p>
+                                            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                                                <span className="text-[10px] text-white/25 flex items-center gap-1">
+                                                    <span className="text-white/40 font-semibold">Created:</span>
+                                                    {event.createdAt
+                                                        ? new Date(event.createdAt.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                                        : 'Unknown'}
+                                                </span>
+                                                <span className="text-white/15">·</span>
+                                                <span className="text-[10px] flex items-center gap-1">
+                                                    <span className="text-white/40 font-semibold">Last used:</span>
+                                                    {event.lastUsedAt
+                                                        ? <span className="text-primary/70">{new Date(event.lastUsedAt.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                                        : <span className="text-white/25 italic">Never run</span>}
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="hidden md:block">

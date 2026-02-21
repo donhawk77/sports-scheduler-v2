@@ -75,6 +75,10 @@ export interface Event {
         lng: number;
     };
     geohash?: string;
+
+    // Audit fields
+    createdAt?: Timestamp;
+    lastUsedAt?: Timestamp;
 }
 
 export interface Transaction {
