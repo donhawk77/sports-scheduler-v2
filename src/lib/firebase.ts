@@ -36,22 +36,24 @@ try {
     app = initializeApp(firebaseConfig);
     console.log('Firebase.ts: initializedApp success');
 
-    // Initialize App Check (ReCAPTCHA Enterprise)
-    // In local development, setting this flag enables a debug token
-    if (import.meta.env.DEV) {
-        ; (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
-    }
-
-    try {
-        initializeAppCheck(app, {
-            provider: new ReCaptchaEnterpriseProvider(
-                import.meta.env.VITE_RECAPTCHA_SITE_KEY || 'PLACEHOLDER_RECAPTCHA_KEY'
-            ),
-            isTokenAutoRefreshEnabled: true
-        });
-        console.log('Firebase.ts: AppCheck initialized');
-    } catch (acError) {
-        console.warn('Firebase.ts: AppCheck failed to initialize (expected if keys missing):', acError);
+    // Initialize App Check (ReCAPTCHA Enterprise) ONLY if a real key is provided.
+    // A missing/placeholder key causes 400 errors that block Firebase Auth entirely.
+    const recaptchaKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
+    if (recaptchaKey && recaptchaKey !== 'PLACEHOLDER_RECAPTCHA_KEY') {
+        if (import.meta.env.DEV) {
+            (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+        }
+        try {
+            initializeAppCheck(app, {
+                provider: new ReCaptchaEnterpriseProvider(recaptchaKey),
+                isTokenAutoRefreshEnabled: true
+            });
+            console.log('Firebase.ts: AppCheck initialized');
+        } catch (acError) {
+            console.warn('Firebase.ts: AppCheck failed to initialize:', acError);
+        }
+    } else {
+        console.warn('Firebase.ts: AppCheck SKIPPED — no valid VITE_RECAPTCHA_SITE_KEY found. Auth will work normally.');
     }
 
     // Export services

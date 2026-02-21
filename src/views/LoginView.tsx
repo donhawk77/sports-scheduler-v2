@@ -16,19 +16,17 @@ export const LoginView: React.FC = () => {
     const [isSignUp, setIsSignUp] = useState(false);
 
     // Get role from state, default to null if accessed directly
-    const role = location.state?.role as 'player' | 'coach' | 'venue' | undefined;
+    const role = location.state?.role as 'player' | 'coach' | 'venue' | 'admin' | undefined;
     const from = location.state?.from?.pathname || '/';
-
-    // console.log('LoginView Location State:', location.state);
-    // console.log('LoginView From Path:', from);
 
     // Infer role from the redirect path if not explicitly provided
     // This handles the case where RequireAuth redirects to /login from a specific dashboard
-    let effectiveRole = role;
+    let effectiveRole: 'player' | 'coach' | 'venue' | 'admin' | undefined = role;
     if (!effectiveRole) {
         if (from.startsWith('/player')) effectiveRole = 'player';
         else if (from.startsWith('/coach')) effectiveRole = 'coach';
         else if (from.startsWith('/venue')) effectiveRole = 'venue';
+        else if (from.startsWith('/admin')) effectiveRole = 'admin';
     }
 
     const getRoleConfig = () => {
@@ -54,12 +52,19 @@ export const LoginView: React.FC = () => {
                     bgColor: 'bg-purple-500/20',
                     destination: '/venue'
                 };
+            case 'admin':
+                return {
+                    title: 'Admin Login',
+                    color: 'text-red-400',
+                    bgColor: 'bg-red-500/20',
+                    destination: '/admin'
+                };
             default:
                 return {
                     title: 'Welcome Back',
                     color: 'text-white',
                     bgColor: 'bg-white/10',
-                    destination: '/' // Should force selection if generic, but for now fallback to root or show menu
+                    destination: '/'
                 };
         }
     };
@@ -91,8 +96,7 @@ export const LoginView: React.FC = () => {
                 showToast('Successfully logged in!', 'success');
             }
 
-            // Navigate to the role-specific dashboard OR the page they were trying to visit
-            // Priority: Explicit Role Destination from Login Menu -> Redirect "Context" -> Default Dashboard
+            // Navigate based on actual Firestore role (most reliable), then fallback to selected role
             const target = effectiveRole ? config.destination : (from !== '/' && from !== '/login') ? from : '/explore';
             navigate(target);
         } catch (error) {
@@ -149,7 +153,7 @@ export const LoginView: React.FC = () => {
                         <button
                             onClick={handleLogin}
                             disabled={loading}
-                            className={`w-full py-4 rounded-xl font-bold text-black uppercase tracking-wider hover:opacity-90 transition-opacity flex items-center justify-center gap-2 ${effectiveRole === 'player' ? 'bg-blue-500' : effectiveRole === 'coach' ? 'bg-primary' : 'bg-purple-500'}`}
+                            className={`w-full py-4 rounded-xl font-bold text-black uppercase tracking-wider hover:opacity-90 transition-opacity flex items-center justify-center gap-2 ${effectiveRole === 'player' ? 'bg-blue-500' : effectiveRole === 'coach' ? 'bg-primary' : effectiveRole === 'admin' ? 'bg-red-500 text-white' : 'bg-purple-500'}`}
                         >
                             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isSignUp ? 'Sign Up' : 'Sign In')}
                         </button>
@@ -174,6 +178,9 @@ export const LoginView: React.FC = () => {
                         </button>
                         <button onClick={() => navigate('/login', { state: { role: 'venue' } })} className="w-full py-4 bg-white/5 border border-white/10 rounded-xl flex items-center justify-between px-6 hover:bg-white/10 transition-colors">
                             <span className="text-white font-bold">Venue Owner</span>
+                        </button>
+                        <button onClick={() => navigate('/login', { state: { role: 'admin' } })} className="w-full py-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center justify-between px-6 hover:bg-red-500/20 transition-colors">
+                            <span className="text-red-400 font-bold">Admin</span>
                         </button>
                     </div>
                 )}
