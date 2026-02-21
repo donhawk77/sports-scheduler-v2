@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Briefcase, MapPin, Clock, DollarSign, CheckCircle, ArrowLeft, Share2, Loader2 } from 'lucide-react';
 import { collection, query, where, getDocs, orderBy, doc, Timestamp, runTransaction, limit, startAfter, QueryDocumentSnapshot } from 'firebase/firestore';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -12,78 +13,56 @@ export const GigBoardView: React.FC = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const { showToast } = useToast();
-    const [gigs, setGigs] = useState<Gig[]>([]);
-    const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<'all' | 'high_pay' | 'urgent'>('all');
 
     // Share State
     const [shareConfig, setShareConfig] = useState<{ isOpen: boolean, title: string, text: string } | null>(null);
 
-    // Pagination State
-    const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot | null>(null);
-    const [hasMore, setHasMore] = useState(true);
-    const [loadingMore, setLoadingMore] = useState(false);
-
-    const fetchGigs = React.useCallback(async () => {
-        setLoading(true);
-        try {
-            const gigsRef = collection(db, 'gigs');
-            // Show only open gigs
-            const q = query(
+    const fetchGigsPage = async ({ pageParam = null }: { pageParam: QueryDocumentSnapshot | null }) => {
+        const gigsRef = collection(db, 'gigs');
+        let q = query(
+            gigsRef,
+            where('status', '==', 'open'),
+            orderBy('startTime', 'asc'),
+            limit(10)
+        );
+        if (pageParam) {
+            q = query(
                 gigsRef,
                 where('status', '==', 'open'),
                 orderBy('startTime', 'asc'),
+                startAfter(pageParam),
                 limit(10)
             );
-            const querySnapshot = await getDocs(q);
-            const fetchedGigs = querySnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            })) as Gig[];
-            setGigs(fetchedGigs);
-            setLastVisible(querySnapshot.docs[querySnapshot.docs.length - 1] || null);
-            setHasMore(querySnapshot.docs.length === 10);
-        } catch (error) {
-            console.error('Error fetching gigs:', error);
-            showToast('Failed to load gigs', 'error');
-        } finally {
-            setLoading(false);
         }
-    }, [showToast]);
+        const querySnapshot = await getDocs(q);
+        const fetchedGigs = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        })) as Gig[];
 
-    const loadMoreGigs = async () => {
-        if (!lastVisible || loadingMore) return;
-        setLoadingMore(true);
-        try {
-            const gigsRef = collection(db, 'gigs');
-            const q = query(
-                gigsRef,
-                where('status', '==', 'open'),
-                orderBy('startTime', 'asc'),
-                startAfter(lastVisible),
-                limit(10)
-            );
-            const querySnapshot = await getDocs(q);
-
-            const fetchedGigs = querySnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            })) as Gig[];
-
-            setGigs(prev => [...prev, ...fetchedGigs]);
-            setLastVisible(querySnapshot.docs[querySnapshot.docs.length - 1] || null);
-            setHasMore(querySnapshot.docs.length === 10);
-        } catch (error) {
-            console.error('Error loading more gigs:', error);
-            showToast('Failed to load more gigs', 'error');
-        } finally {
-            setLoadingMore(false);
-        }
+        return {
+            gigs: fetchedGigs,
+            lastVisible: querySnapshot.docs[querySnapshot.docs.length - 1] || null,
+            hasMore: querySnapshot.docs.length === 10
+        };
     };
 
-    useEffect(() => {
-        fetchGigs();
-    }, [fetchGigs]);
+    const {
+        data,
+        fetchNextPage,
+        hasNextPage,
+        isFetchingNextPage,
+        isLoading,
+        refetch
+    } = useInfiniteQuery({
+        queryKey: ['gigs'],
+        queryFn: fetchGigsPage,
+        initialPageParam: null as QueryDocumentSnapshot | null,
+        getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.lastVisible : undefined,
+    });
+
+    const gigs = data?.pages.flatMap(page => page.gigs) || [];
 
     const handleClaim = async (gigId: string) => {
         if (!user) {
@@ -115,14 +94,14 @@ export const GigBoardView: React.FC = () => {
                 });
 
                 showToast('Gig Claimed! The head coach has been notified.', 'success');
-                fetchGigs(); // Refresh list
+                refetch(); // Refresh list
             } catch (error: any) {
                 console.error('Error claiming gig:', error);
                 const message = error.message === 'Gig already claimed by someone else'
                     ? error.message
                     : 'Failed to claim gig. Please try again.';
                 showToast(message, 'error');
-                fetchGigs(); // Refresh to show current status
+                refetch(); // Refresh to show current status
             }
         }
     };
@@ -187,7 +166,7 @@ export const GigBoardView: React.FC = () => {
                 </button>
             </div>
 
-            {loading ? (
+            {isLoading ? (
                 <div className="flex-1 flex items-center justify-center py-20">
                     <Loader2 className="w-12 h-12 text-primary animate-spin" />
                 </div>
@@ -259,15 +238,15 @@ export const GigBoardView: React.FC = () => {
                 </div>
             )}
 
-            {hasMore && !loading && (
+            {hasNextPage && !isLoading && (
                 <div className="flex justify-center mt-8 pb-8 animate-fade-in-up">
                     <button
-                        onClick={loadMoreGigs}
-                        disabled={loadingMore}
+                        onClick={() => fetchNextPage()}
+                        disabled={isFetchingNextPage}
                         className="px-6 py-3 bg-white/5 hover:bg-white/10 text-white font-bold rounded-xl transition-colors border border-white/10 flex items-center gap-2"
                     >
-                        {loadingMore && <Loader2 className="w-5 h-5 animate-spin" />}
-                        {loadingMore ? 'Loading...' : 'Load More Gigs'}
+                        {isFetchingNextPage && <Loader2 className="w-5 h-5 animate-spin" />}
+                        {isFetchingNextPage ? 'Loading...' : 'Load More Gigs'}
                     </button>
                 </div>
             )}

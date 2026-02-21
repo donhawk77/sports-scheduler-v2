@@ -6,6 +6,8 @@ import './lib/firebase' // Initialize Firebase
 import App from './App.tsx'
 import { ToastProvider } from './context/ToastContext.tsx'
 import { AuthProvider } from './context/AuthContext.tsx'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import * as Sentry from "@sentry/react";
 
 Sentry.init({
@@ -20,6 +22,18 @@ Sentry.init({
   replaysOnErrorSampleRate: 1.0,
 });
 
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      gcTime: 1000 * 60 * 30, // 30 minutes
+      retry: 1, // Only retry failed requests once
+      refetchOnWindowFocus: false, // Don't refetch every time the user tabs back
+    },
+  },
+})
+
+
 console.log('Main.tsx: Starting execution');
 try {
   const rootElement = document.getElementById('root');
@@ -31,13 +45,16 @@ try {
 
   root.render(
     <StrictMode>
-      <BrowserRouter>
-        <AuthProvider>
-          <ToastProvider>
-            <App />
-          </ToastProvider>
-        </AuthProvider>
-      </BrowserRouter>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <AuthProvider>
+            <ToastProvider>
+              <App />
+            </ToastProvider>
+          </AuthProvider>
+        </BrowserRouter>
+        <ReactQueryDevtools initialIsOpen={false} />
+      </QueryClientProvider>
     </StrictMode>,
   );
   console.log('Main.tsx: Render called');

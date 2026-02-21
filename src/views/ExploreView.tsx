@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Search, Share2, Heart, Loader2, Calendar, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, getDocs, orderBy, limit, startAfter, QueryDocumentSnapshot } from 'firebase/firestore';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -15,82 +16,49 @@ export const ExploreView: React.FC = () => {
     const { user } = useAuth();
     const { showToast } = useToast();
 
-    const [events, setEvents] = useState<Event[]>([]);
-    const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [shareConfig, setShareConfig] = useState<{ isOpen: boolean, title: string, text: string } | null>(null);
 
     // Location & Filtering State
     const [showFilters, setShowFilters] = useState(false);
-    const [radius, setRadius] = useState<number>(0); // 0 means no radius filter
+    const [radius, setRadius] = useState<number>(0);
     const [selectedCity, setSelectedCity] = useState<string>('');
     const [userCoords, setUserCoords] = useState<[number, number] | null>(null);
-    const [availableCities, setAvailableCities] = useState<string[]>([]);
 
-    // Pagination State
-    const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot | null>(null);
-    const [hasMore, setHasMore] = useState(true);
-    const [loadingMore, setLoadingMore] = useState(false);
-
-    useEffect(() => {
-        const fetchEvents = async () => {
-            try {
-                setLoading(true);
-                const eventsRef = collection(db, 'events');
-                const q = query(eventsRef, orderBy('startTime', 'asc'), limit(15));
-                const querySnapshot = await getDocs(q);
-
-                const fetchedEvents = querySnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                })) as Event[];
-
-                // Extract unique cities for the filter
-                const cities = Array.from(new Set(fetchedEvents
-                    .map(e => e.city)
-                    .filter(Boolean))) as string[];
-                setAvailableCities(cities.sort());
-
-                setEvents(fetchedEvents);
-                setLastVisible(querySnapshot.docs[querySnapshot.docs.length - 1] || null);
-                setHasMore(querySnapshot.docs.length === 15);
-            } catch (error) {
-                console.error('Error fetching events:', error);
-                showToast('Failed to load sessions', 'error');
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchEvents();
-    }, [showToast]);
-
-    const loadMoreEvents = async () => {
-        if (!lastVisible || loadingMore) return;
-        setLoadingMore(true);
-        try {
-            const eventsRef = collection(db, 'events');
-            const q = query(eventsRef, orderBy('startTime', 'asc'), startAfter(lastVisible), limit(15));
-            const querySnapshot = await getDocs(q);
-
-            const fetchedEvents = querySnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            })) as Event[];
-
-            const newCities = Array.from(new Set(fetchedEvents.map(e => e.city).filter(Boolean))) as string[];
-            setAvailableCities(prev => Array.from(new Set([...prev, ...newCities])).sort());
-
-            setEvents(prev => [...prev, ...fetchedEvents]);
-            setLastVisible(querySnapshot.docs[querySnapshot.docs.length - 1] || null);
-            setHasMore(querySnapshot.docs.length === 15);
-        } catch (error) {
-            console.error('Error loading more events:', error);
-            showToast('Failed to load more sessions', 'error');
-        } finally {
-            setLoadingMore(false);
+    const fetchEventsPage = async ({ pageParam = null }: { pageParam: QueryDocumentSnapshot | null }) => {
+        const eventsRef = collection(db, 'events');
+        let q = query(eventsRef, orderBy('startTime', 'asc'), limit(15));
+        if (pageParam) {
+            q = query(eventsRef, orderBy('startTime', 'asc'), startAfter(pageParam), limit(15));
         }
+        const querySnapshot = await getDocs(q);
+        const fetchedEvents = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        })) as Event[];
+
+        return {
+            events: fetchedEvents,
+            lastVisible: querySnapshot.docs[querySnapshot.docs.length - 1] || null,
+            hasMore: querySnapshot.docs.length === 15
+        };
     };
+
+    const {
+        data,
+        fetchNextPage,
+        hasNextPage,
+        isFetchingNextPage,
+        isLoading
+    } = useInfiniteQuery({
+        queryKey: ['events'],
+        queryFn: fetchEventsPage,
+        initialPageParam: null as QueryDocumentSnapshot | null,
+        getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.lastVisible : undefined,
+    });
+
+    const events = data?.pages.flatMap(page => page.events) || [];
+    const availableCities = Array.from(new Set(events.map(e => e.city).filter(Boolean))).sort() as string[];
 
     const requestLocation = () => {
         if (!navigator.geolocation) {
@@ -252,7 +220,7 @@ export const ExploreView: React.FC = () => {
             </div>
 
             {/* loading state */}
-            {loading ? (
+            {isLoading ? (
                 <div className="flex flex-col items-center justify-center py-20">
                     <Loader2 className="w-8 h-8 text-primary animate-spin mb-4" />
                     <p className="text-text-muted">Hunting for sessions...</p>
@@ -318,15 +286,15 @@ export const ExploreView: React.FC = () => {
                 </div>
             )}
 
-            {hasMore && !loading && (
+            {hasNextPage && !isLoading && (
                 <div className="flex justify-center mt-8 pb-8 animate-fade-in-up">
                     <button
-                        onClick={loadMoreEvents}
-                        disabled={loadingMore}
+                        onClick={() => fetchNextPage()}
+                        disabled={isFetchingNextPage}
                         className="px-6 py-3 bg-white/5 hover:bg-white/10 text-white font-bold rounded-xl transition-colors border border-white/10 flex items-center gap-2"
                     >
-                        {loadingMore && <Loader2 className="w-5 h-5 animate-spin" />}
-                        {loadingMore ? 'Loading...' : 'Load More Sessions'}
+                        {isFetchingNextPage && <Loader2 className="w-5 h-5 animate-spin" />}
+                        {isFetchingNextPage ? 'Loading...' : 'Load More Sessions'}
                     </button>
                 </div>
             )}
