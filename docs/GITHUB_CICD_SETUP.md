@@ -152,7 +152,7 @@ if (recaptchaKey && recaptchaKey !== 'PLACEHOLDER_RECAPTCHA_KEY') {
 **Root Cause:** When the `VITE_FIREBASE_API_KEY` secret was saved in GitHub, a newline character was included at the end of the value.  
 **Fix:** Re-enter the secret in GitHub with no trailing newline. The exact value must be:  
 ```
-AIzaSyClzJ_JR68a6uLBr8-2ZGak2_c_wFo36Hs
+your_actual_api_key_here
 ```
 Navigate to: GitHub → Settings → Secrets → `VITE_FIREBASE_API_KEY` → Update
 
